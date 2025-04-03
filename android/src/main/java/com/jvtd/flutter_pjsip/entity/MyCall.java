@@ -55,10 +55,6 @@ public class MyCall extends Call
     PjSipManager.observer.notifyCallState(this);
   }
 
-  /***
-   * 通话中媒体状态发生变化时通知应用程序。
-   * 正常的应用程序需要实现这个回调，例如将呼叫的媒体连接到声音设备。当使用ICE时，该回调也将被调用以报告ICE协商失败。
-   */
   @Override
   public void onCallMediaState(OnCallMediaStateParam prm)
   {
@@ -76,8 +72,8 @@ public class MyCall extends Call
     for (int i = 0; i < mediaInfoVector.size(); i++)
     {
       CallMediaInfo mediaInfo = mediaInfoVector.get(i);
-      pjmedia_type type = mediaInfo.getType();
-      pjsua_call_media_status status = mediaInfo.getStatus();
+      int type = mediaInfo.getType();
+      int status = mediaInfo.getStatus();
 
       if (type == pjmedia_type.PJMEDIA_TYPE_AUDIO
               && (status == pjsua_call_media_status.PJSUA_CALL_MEDIA_ACTIVE

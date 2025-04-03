@@ -1,5 +1,6 @@
 package com.jvtd.flutter_pjsip;
 
+import androidx.annotation.NonNull;
 import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -16,17 +17,19 @@ import android.net.NetworkInfo;
 import android.os.Handler;
 import android.os.Message;
 import android.os.PowerManager;
+import android.os.VibrationEffect;
 import android.os.Vibrator;
-import android.support.annotation.NonNull;
 import android.telephony.PhoneStateListener;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.Log;
+import android.content.pm.PackageManager;
 
 import com.jvtd.flutter_pjsip.entity.MSG_TYPE;
 import com.jvtd.flutter_pjsip.entity.MyBuddy;
 import com.jvtd.flutter_pjsip.entity.MyCall;
 import com.jvtd.flutter_pjsip.interfaces.MyAppObserver;
+import com.jvtd.flutter_pjsip.utils.MethodResultWrapper;
 import com.jvtd.flutter_pjsip.utils.SoundPoolUtil;
 
 import org.pjsip.pjsua2.CallInfo;
@@ -37,16 +40,17 @@ import org.pjsip.pjsua2.pjsip_status_code;
 import java.util.HashMap;
 import java.util.Map;
 
+import io.flutter.embedding.engine.plugins.activity.ActivityAware;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
-import io.flutter.plugin.common.PluginRegistry.Registrar;
+import io.flutter.embedding.engine.plugins.FlutterPlugin;
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 
-/**
- * FlutterPjsipPlugin
- */
-public class FlutterPjsipPlugin implements MethodCallHandler
+
+
+public class FlutterPjsipPlugin  implements FlutterPlugin, MethodCallHandler, ActivityAware 
 {
   private static final String TAG = "FlutterPjsipPlugin";
 
@@ -60,8 +64,9 @@ public class FlutterPjsipPlugin implements MethodCallHandler
   private static final String METHOD_PJSIP_REFUSE = "method_pjsip_refuse";
   private static final String METHOD_PJSIP_HANDS_FREE = "method_pjsip_hands_free";
   private static final String METHOD_PJSIP_MUTE = "method_pjsip_mute";
-
   private static final String METHOD_CALL_STATUS_CHANGED = "method_call_state_changed";
+  private  static  final String METHOD_PJSIP_HOLD_CALL = "method_pjsip_hold_call";
+  private  static  final String METHOD_PJSIP_REINVITE_CALL = "method_pjsip_reinvite_call";
 
 
   private MethodChannel mChannel;
@@ -69,8 +74,8 @@ public class FlutterPjsipPlugin implements MethodCallHandler
   private Result mResult;
   private String mMethod;
   private MyBroadcastReceiver mReceiver;
-  private String mIp;// sip服务器的IP
-  private String mPort;// sip服务器的端口号
+  private String mIp;
+  private String mPort;
   private MyCall mCurrentCall;// 记录当前通话，若没有通话，为null
 
   private AudioManager mAudioManager;
@@ -83,21 +88,16 @@ public class FlutterPjsipPlugin implements MethodCallHandler
   private Vibrator mVibrator;
 
   private PjSipManagerState mPjSipManagerState = PjSipManagerState.STATE_UNDEFINED;
-  private PjSipManager mPjSipManager = PjSipManager.getInstance();
+  private final PjSipManager mPjSipManager = PjSipManager.getInstance();
 
-  private MyAppObserver mAppObserver = new MyAppObserver()
+  private final MyAppObserver mAppObserver = new MyAppObserver()
   {
     @Override
-    public void notifyRegState(final pjsip_status_code code, String reason, final int expiration)
+    public void notifyRegState(final long code, String reason, final long expiration)
     {
       if (TextUtils.equals(mMethod, METHOD_PJSIP_LOGIN))
       {
-//        String msg_str = "";
-//        if (expiration == 0)// 注销
-//          msg_str += "Unregistration";
-//        else// 注册
-//          msg_str += "Registration";
-        boolean loginResult = code.swigValue() / 100 == 2;
+        boolean loginResult = code / 100 == 2;
         mMethod = "";
 
         Message m = Message.obtain(handler, MSG_TYPE.REG_STATE, loginResult);
@@ -177,7 +177,7 @@ public class FlutterPjsipPlugin implements MethodCallHandler
             return true;
           }
 
-          pjsip_inv_state state = callInfo.getState();
+          long state = callInfo.getState();
           if (state == pjsip_inv_state.PJSIP_INV_STATE_CALLING)
           {
             mSoundPoolUtil = new SoundPoolUtil(mActivity, new SoundPool.OnLoadCompleteListener()
@@ -191,16 +191,16 @@ public class FlutterPjsipPlugin implements MethodCallHandler
             });
             int rawId = R.raw.ring_back;
             mSoundWaitId = mSoundPoolUtil.load(rawId);
-
             mPjSipManagerState = PjSipManagerState.STATE_CALLING;
           } else if (state == pjsip_inv_state.PJSIP_INV_STATE_CONFIRMED)
           {
             registerPhoneState();
             stopRingBackSound();
+
             mPjSipManagerState = PjSipManagerState.STATE_CONFIRMED;
             // 通话状态被确认，震动500ms
             if (mVibrator != null)
-              mVibrator.vibrate(500);
+              mVibrator.vibrate(VibrationEffect.createOneShot(500,10));
             if (mActivity != null)
               mActivity.setVolumeControlStream(AudioManager.STREAM_VOICE_CALL);
             if (mAudioManager != null)
@@ -224,7 +224,7 @@ public class FlutterPjsipPlugin implements MethodCallHandler
 
           if (mChannel != null)
           {
-            Log.i(TAG, "FlutterPjsipPlugin接收到状态" + callInfo.getStateText());
+            Log.i(TAG, "FlutterPjsipPlugin Error" + callInfo.getStateText());
             mChannel.invokeMethod(METHOD_CALL_STATUS_CHANGED, buildArguments(callInfo.getStateText(), callInfo.getRemoteUri()));
           }
           break;
@@ -294,28 +294,8 @@ public class FlutterPjsipPlugin implements MethodCallHandler
     }
   });
 
-
-  private FlutterPjsipPlugin(final MethodChannel channel, Activity activity)
-  {
-    this.mChannel = channel;
-    this.mChannel.setMethodCallHandler(this);
-    this.mActivity = activity;
-
-    registerAudioManager();
-  }
-
-  /**
-   * Plugin registration.
-   */
-  public static void registerWith(Registrar registrar)
-  {
-    final MethodChannel channel = new MethodChannel(registrar.messenger(), CHANNEL);
-    //setMethodCallHandler在此通道上接收方法调用的回调
-    channel.setMethodCallHandler(new FlutterPjsipPlugin(channel, registrar.activity()));
-  }
-
   @Override
-  public void onMethodCall(@NonNull MethodCall call, @NonNull Result result)
+  public void onMethodCall(@NonNull MethodCall call,final @NonNull Result result)
   {
     try
     {
@@ -325,9 +305,52 @@ public class FlutterPjsipPlugin implements MethodCallHandler
       result.error("Unexpected error!", e.getMessage(), e);
     }
   }
+  @Override
+  public void onReattachedToActivityForConfigChanges(@NonNull ActivityPluginBinding binding){
+    mActivity = binding.getActivity();
+    registerAudioManager();
+  }
+  @Override 
+  public void onAttachedToActivity(@NonNull ActivityPluginBinding binding){
+    mActivity = binding.getActivity();
+    registerAudioManager();
+  }
 
-  private void handleMethodCall(MethodCall call, Result result)
+  @Override
+  public void onAttachedToEngine(@NonNull FlutterPlugin.FlutterPluginBinding flutterPluginBinding) {
+    mChannel = new MethodChannel(flutterPluginBinding.getFlutterEngine().getDartExecutor(), CHANNEL);
+    mChannel.setMethodCallHandler(this);
+  }
+
+  @Override
+  public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+      mChannel.setMethodCallHandler(null);
+  }
+  @Override 
+  public void  onDetachedFromActivity(){
+    mActivity = null;
+    mAudioManager = null;
+  }
+  @Override 
+  public void onDetachedFromActivityForConfigChanges(){
+    mActivity = null;
+    mAudioManager = null;
+  }
+
+  private static final int PERMISSION_CODE = 1001; // Define a unique request code for permissions
+
+  private void checkPermissions() {
+      if (mActivity.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+              != PackageManager.PERMISSION_GRANTED) {
+
+          mActivity.requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO},
+                  PERMISSION_CODE);
+      }
+}
+
+  private void handleMethodCall(MethodCall call, Result rawResult)
   {
+    MethodChannel.Result result = new MethodResultWrapper(rawResult);
     mMethod = call.method;
     mResult = result;
     if (mMethod == null || mResult == null) return;
@@ -338,87 +361,88 @@ public class FlutterPjsipPlugin implements MethodCallHandler
     }
     switch (mMethod)
     {
-      case METHOD_PJSIP_INIT:
-        pjsipInit();
-        break;
+      case METHOD_PJSIP_INIT -> pjsipInit();
 
-      case METHOD_PJSIP_LOGIN:
-        String username = call.argument("username");
-        String password = call.argument("password");
-        mIp = call.argument("ip");
-        mPort = call.argument("port");
-        pjsipLogin(username, password, mIp, mPort);
-        break;
+      case METHOD_PJSIP_LOGIN -> {
+          String username = call.argument("username");
+          String password = call.argument("password");
+          mIp = call.argument("ip");
+          mPort = call.argument("port");
+          pjsipLogin(username, password, mIp, mPort);
+          }
 
-      case METHOD_PJSIP_CALL:
-        String toUsername = call.argument("username");
-        String toIp = call.argument("ip");
-        String toPort = call.argument("port");
-        pjsipCall(toUsername, TextUtils.isEmpty(toIp) ? mIp : toIp, TextUtils.isEmpty(toPort) ? mPort : toPort);
-        break;
+      case METHOD_PJSIP_CALL -> {
+          String toUsername = call.argument("username");
+          String toIp = call.argument("ip");
+          String toPort = call.argument("port");
+          pjsipCall(toUsername, TextUtils.isEmpty(toIp) ? mIp : toIp, TextUtils.isEmpty(toPort) ? mPort : toPort);
+          }
 
-      case METHOD_PJSIP_LOGOUT:
-        pjsipLogout();
-        break;
+      case METHOD_PJSIP_LOGOUT -> pjsipLogout();
 
-      case METHOD_PJSIP_DEINIT:
-        pjsipDeinit();
-        break;
+      case METHOD_PJSIP_DEINIT -> pjsipDeinit();
 
-      case METHOD_PJSIP_RECEIVE:
-        pjsipReceive();
-        break;
+      case METHOD_PJSIP_RECEIVE -> pjsipReceive();
 
-      case METHOD_PJSIP_REFUSE:
-        pjsipRefuse();
-        unRegisterPhoneState();
-        break;
+      case METHOD_PJSIP_REFUSE -> {
+          pjsipRefuse();
+          unRegisterPhoneState();
+          }
 
-      case METHOD_PJSIP_HANDS_FREE:
-        pjsipHandsFree();
-        break;
+      case METHOD_PJSIP_HANDS_FREE -> pjsipHandsFree();
+      case METHOD_PJSIP_MUTE -> pjsipMute();
+      case METHOD_PJSIP_HOLD_CALL -> pjsipHoldCall();
+      case METHOD_PJSIP_REINVITE_CALL ->  pjsipReInvite();
 
-      case METHOD_PJSIP_MUTE:
-        pjsipMute();
-        break;
-
-      default:
-        result.notImplemented();
-        break;
+      default -> result.notImplemented();
     }
   }
 
-  /**
-   * PjSip初始化方法
-   *
-   * @author Jack Zhang
-   * create at 2019-08-12 23:37
-   */
+  private void pjsipReInvite() {
+    if (mCurrentCall != null&& mPjSipManagerState.getCode() == PjSipManagerState.STATE_HOLDING.getCode()) {
+      if(mPjSipManager.reInvite()){
+        mResult.success(true);
+        mPjSipManagerState=PjSipManagerState.STATE_HOLDING;
+        return;
+      };
+    }
+    mResult.success(false);
+  }
+
+
+
+  private void pjsipHoldCall() {
+    if (mCurrentCall == null)
+      mResult.success(false);
+    else{
+      if ( mPjSipManagerState.getCode() == PjSipManagerState.STATE_CONFIRMED.getCode()){
+        mPjSipManager.hold();
+        mPjSipManagerState=PjSipManagerState.STATE_HOLDING;
+        mResult.success(true);
+      }
+    }
+
+  }
+
   private void pjsipInit()
   {
     if (mPjSipManagerState.getCode() > PjSipManagerState.STATE_UNDEFINED.getCode())
       mResult.success(false);
     else
     {
-      mPjSipManager.init(mAppObserver);
+          checkPermissions();
+          mPjSipManager.init(mAppObserver);
 
-      if (mReceiver == null)
-      {
-        mReceiver = new MyBroadcastReceiver();
-        IntentFilter intentFilter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
-        mActivity.getApplication().registerReceiver(mReceiver, intentFilter);
+          if (mReceiver == null) {
+              mReceiver = new MyBroadcastReceiver();
+              IntentFilter intentFilter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
+              mActivity.getApplication().registerReceiver(mReceiver, intentFilter);
+          }
+          mPjSipManagerState = PjSipManagerState.STATE_INITED;
+          mResult.success(true);
       }
-      mPjSipManagerState = PjSipManagerState.STATE_INITED;
-      mResult.success(true);
-    }
   }
 
-  /**
-   * PjSip登录方法
-   *
-   * @author Jack Zhang
-   * create at 2019-08-12 23:38
-   */
   private void pjsipLogin(String username, String password, String ip, String port)
   {
     if (mPjSipManagerState.getCode() == PjSipManagerState.STATE_INITED.getCode())
@@ -576,12 +600,6 @@ public class FlutterPjsipPlugin implements MethodCallHandler
       mResult.success(false);
   }
 
-  /**
-   * PjSip静音功能
-   *
-   * @author Jack Zhang
-   * create at 2019-08-22 18:00
-   */
   private void pjsipMute()
   {
     if (mPjSipManagerState == PjSipManagerState.STATE_CONFIRMED)
@@ -676,12 +694,6 @@ public class FlutterPjsipPlugin implements MethodCallHandler
     mVibrator = (Vibrator) mActivity.getSystemService(Context.VIBRATOR_SERVICE);
   }
 
-  /**
-   * 取消相关监听
-   *
-   * @author Jack Zhang
-   * create at 2019-08-20 23:37
-   */
   private void unRegisterPhoneState()
   {
     if (mSystemPhoneStateListener != null && mTelephonyManager != null)
@@ -743,19 +755,12 @@ public class FlutterPjsipPlugin implements MethodCallHandler
 
   private SensorEventListener mSensorEventListener = new SensorEventListener()
   {
-    /**
-     * 距离传感器监听
-     *
-     * @author Jack Zhang
-     * create at 2019-08-13 14:49
-     */
     @Override
     public void onSensorChanged(SensorEvent event)
     {
       float[] its = event.values;
       if (its != null && event.sensor.getType() == Sensor.TYPE_PROXIMITY)
       {
-        // 经过测试，当手贴近距离感应器的时候its[0]返回值为0.0，当手离开时返回1.0
         if (its[0] == 0.0f)
         {
           // 贴近手机
@@ -773,12 +778,6 @@ public class FlutterPjsipPlugin implements MethodCallHandler
       }
     }
 
-    /**
-     * 精度传感器监听
-     *
-     * @author Jack Zhang
-     * create at 2019-08-13 14:50
-     */
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy)
     {
@@ -800,8 +799,6 @@ public class FlutterPjsipPlugin implements MethodCallHandler
           //电话挂断
           break;
         case TelephonyManager.CALL_STATE_OFFHOOK:
-          //通话中
-          //挂断网络电话
           pjsipRefuse();
           break;
       }

@@ -13,7 +13,8 @@ public enum PjSipManagerState
   STATE_CALLING(3),
   STATE_INCOMING(4),
   STATE_CONFIRMED(5),
-  STATE_DISCONNECTED(6);
+  STATE_DISCONNECTED(6),
+  STATE_HOLDING(7);
 
   private int code;
 

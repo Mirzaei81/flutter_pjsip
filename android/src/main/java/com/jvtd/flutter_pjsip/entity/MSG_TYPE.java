@@ -1,10 +1,5 @@
 package com.jvtd.flutter_pjsip.entity;
 
-/**
- * Description:
- * Author: Jack Zhang
- * create on: 2019-08-13 16:06
- */
 public class MSG_TYPE
 {
   public final static int REG_STATE = 1;

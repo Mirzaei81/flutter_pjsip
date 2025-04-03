@@ -12,7 +12,7 @@ import org.pjsip.pjsua2.pjsip_status_code;
  */
 public interface MyAppObserver
 {
-  void notifyRegState(pjsip_status_code code, String reason, int expiration);
+  void notifyRegState(long code, String reason, long expiration);
 
   void notifyIncomingCall(MyCall call);
 

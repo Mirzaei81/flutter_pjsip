@@ -13,7 +13,7 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   String _calltateText = '';
-  FlutterPjsip _pjsip;
+  late FlutterPjsip _pjsip;
 
   @override
   void initState() {
@@ -25,10 +25,11 @@ class _MyAppState extends State<MyApp> {
     _pjsip = FlutterPjsip.instance;
     _pjsip.onSipStateChanged.listen((map) {
       final state = map['call_state'];
-      final remoteUri = map['remote_uri'];
-      print('收到状态: $state');
+      // final remoteUri = map['remote_uri'];
+      print('State: $map');
       switch (state) {
         case "CALLING":
+          print('****** Calling ******');
           break;
 
         case "INCOMING":
@@ -65,47 +66,47 @@ class _MyAppState extends State<MyApp> {
         ),
         body: Column(
           children: <Widget>[
-            RaisedButton(
-              child: Text('Sip初始化'),
+            ElevatedButton(
+              child: Text('sipInit'),
               onPressed: () => _sipInit(),
             ),
-            RaisedButton(
-              child: Text('Sip登录'),
+            ElevatedButton(
+              child: Text('_sipLogin'),
               onPressed: () => _sipLogin(),
             ),
-            RaisedButton(
-              child: Text('Sip打电话'),
+            ElevatedButton(
+              child: Text('_sipCall'),
               onPressed: () => _sipCall(),
             ),
-            RaisedButton(
-              child: Text('Sip登出'),
+            ElevatedButton(
+              child: Text('_sipLogout'),
               onPressed: () => _sipLogout(),
             ),
-            RaisedButton(
-              child: Text('Sip销毁'),
+            ElevatedButton(
+              child: Text('_sipDeinit'),
               onPressed: () => _sipDeinit(),
             ),
-            RaisedButton(
-              child: Text('Sip接听'),
+            ElevatedButton(
+              child: Text('_sipReceive'),
               onPressed: () => _sipReceive(),
             ),
-            RaisedButton(
-              child: Text('Sip拒接/挂断'),
+            ElevatedButton(
+              child: Text('_sipRefuse'),
               onPressed: () => _sipRefuse(),
             ),
-            RaisedButton(
-              child: Text('Sip免提'),
+            ElevatedButton(
+              child: Text('_sipHandsFree'),
               onPressed: () => _sipHandsFree(),
             ),
-            RaisedButton(
-              child: Text('Sip静音'),
+            ElevatedButton(
+              child: Text('_sipMute'),
               onPressed: () => _sipMute(),
             ),
-            RaisedButton(
-              child: Text('Sip通道销毁'),
+            ElevatedButton(
+              child: Text('_sipDispose'),
               onPressed: () => _sipDispose(),
             ),
-            Text('电话状态监听：$_calltateText'),
+            Text('CallState：$_calltateText'),
           ],
         ),
       ),
@@ -114,33 +115,35 @@ class _MyAppState extends State<MyApp> {
 
   Future<void> _sipInit() async {
     bool initSuccess = await _pjsip.pjsipInit();
-    showToast('初始化', initSuccess);
+    showToast('init', initSuccess);
   }
 
   Future<void> _sipLogin() async {
-    bool loginSuccess =
-        await _pjsip.pjsipLogin(username: '1012', password: '123@jvtd', ip: '117.78.34.48', port: '6050');
-    showToast('登录', loginSuccess);
+    bool loginSuccess = await _pjsip.pjsipLogin(
+        username: '601', password: '6016o1', ip: '192.168.5.150', port: '5060');
+    print(loginSuccess);
+    showToast('login was success?', loginSuccess);
   }
 
   Future<void> _sipCall() async {
-    bool callSuccess = await _pjsip.pjsipCall(username: '1010', ip: '117.78.34.48', port: '6050');
-    showToast('打电话', callSuccess);
+    bool callSuccess = await _pjsip.pjsipCall(
+        username: '9127865164', ip: '192.168.5.150', port: '5060');
+    showToast('calling', callSuccess);
   }
 
   Future<void> _sipLogout() async {
     bool logoutSuccess = await _pjsip.pjsipLogout();
-    showToast('登出', logoutSuccess);
+    showToast('loggingout', logoutSuccess);
   }
 
   Future<void> _sipDeinit() async {
     bool initSuccess = await _pjsip.pjsipDeinit();
-    showToast('销毁', initSuccess);
+    showToast('deiniting', initSuccess);
   }
 
   Future<void> _sipReceive() async {
     bool receiveSuccess = await _pjsip.pjsipReceive();
-    showToast('接听', receiveSuccess);
+    showToast('Receive', receiveSuccess);
   }
 
   Future<void> _sipRefuse() async {
@@ -164,7 +167,7 @@ class _MyAppState extends State<MyApp> {
   }
 
   void showToast(String method, bool success) {
-    String successText = success ? '成功' : '失败';
+    String successText = success ? 'Succesfull' : 'failed';
     Fluttertoast.showToast(msg: '$method $successText');
   }
 }

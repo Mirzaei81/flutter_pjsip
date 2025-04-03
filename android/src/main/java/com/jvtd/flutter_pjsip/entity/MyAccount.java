@@ -4,6 +4,7 @@ import com.jvtd.flutter_pjsip.PjSipManager;
 
 import org.pjsip.pjsua2.Account;
 import org.pjsip.pjsua2.AccountConfig;
+import org.pjsip.pjsua2.AccountInfo;
 import org.pjsip.pjsua2.BuddyConfig;
 import org.pjsip.pjsua2.OnIncomingCallParam;
 import org.pjsip.pjsua2.OnInstantMessageParam;
@@ -69,14 +70,15 @@ public class MyAccount extends Account
     bud.delete();
   }
 
-  /**
-   * 当注册或注销已经启动时通知申请。
-   * 请注意，这只会通知初始注册和注销。一旦注册会话处于活动状态，后续刷新将不会导致此回调被调用。
-   */
   @Override
   public void onRegState(OnRegStateParam prm)
   {
-    PjSipManager.observer.notifyRegState(prm.getCode(), prm.getReason(), prm.getExpiration());
+    try {
+      AccountInfo info = getInfo();
+      PjSipManager.observer.notifyRegState(info.getRegStatus(), "Registered successfully!", info.getRegExpiresSec());
+    }catch (Exception e){
+      PjSipManager.observer.notifyRegState(prm.getCode(), prm.getReason(), prm.getExpiration());
+    }
   }
 
   /**

@@ -1,30 +1,36 @@
 package com.jvtd.flutter_pjsip;
 
+import android.Manifest;
+import android.os.Build;
+import android.content.pm.PackageManager;
+
 import com.jvtd.flutter_pjsip.entity.MyAccount;
 import com.jvtd.flutter_pjsip.entity.MyCall;
 import com.jvtd.flutter_pjsip.interfaces.MyAppObserver;
+import com.jvtd.flutter_pjsip.utils.MyLogWriter;
 
 import org.pjsip.pjsua2.AccountConfig;
 import org.pjsip.pjsua2.AuthCredInfo;
 import org.pjsip.pjsua2.AuthCredInfoVector;
+import org.pjsip.pjsua2.CallInfo;
 import org.pjsip.pjsua2.CallOpParam;
+import org.pjsip.pjsua2.CallSetting;
 import org.pjsip.pjsua2.Endpoint;
 import org.pjsip.pjsua2.EpConfig;
 import org.pjsip.pjsua2.IpChangeParam;
 import org.pjsip.pjsua2.TransportConfig;
 import org.pjsip.pjsua2.UaConfig;
 import org.pjsip.pjsua2.pjsip_transport_type_e;
+import org.pjsip.pjsua2.pjsua_call_flag;
 
-/**
- * Description: PjSip管理类
- * Author: Jack Zhang
- * create on: 2019-08-21 23:19
- */
 public class PjSipManager
 {
   private static volatile PjSipManager mInstance;
   private AccountConfig mAccountConfig;
   private MyAccount mAccount;
+  private static final int PERMISSION_CODE = 123;
+  private MyLogWriter writer;
+  MyCall call;
 
   static
   {
@@ -70,23 +76,11 @@ public class PjSipManager
   public static Endpoint mEndPoint;
   public static MyAppObserver observer;
 
-  /**
-   * 初始化方法
-   *
-   * @author Jack Zhang
-   * create at 2019-08-12 14:34
-   */
   public void init(MyAppObserver obs)
   {
     init(obs, false);
   }
 
-  /**
-   * 初始化方法
-   *
-   * @author Jack Zhang
-   * create at 2019-08-12 14:34
-   */
   public void init(MyAppObserver obs, boolean own_worker_thread)
   {
     observer = obs;
@@ -101,18 +95,13 @@ public class PjSipManager
     {
       return;
     }
-
     EpConfig epConfig = new EpConfig();
+    var mLogConfig = epConfig.getLogConfig();
+    writer = new MyLogWriter();
+    mLogConfig.setWriter(writer);
 
-    // UAConfig，指定核心SIP用户代理设置
     UaConfig ua_cfg = epConfig.getUaConfig();
     ua_cfg.setUserAgent("Pjsua2 Android " + mEndPoint.libVersion().getFull());
-
-    /* STUN server. */
-    //StringVector stun_servers = new StringVector();
-    //stun_servers.add("stun.pjsip.org");
-    //ua_cfg.setStunServer(stun_servers);
-
     /* No worker thread */
     if (own_worker_thread)
     {
@@ -120,7 +109,6 @@ public class PjSipManager
       ua_cfg.setMainThreadOnly(true);
     }
 
-    // 指定ep_cfg中设置的自定义
     try
     {
       mEndPoint.libInit(epConfig);
@@ -131,12 +119,9 @@ public class PjSipManager
     }
 
     TransportConfig sipTpConfig = new TransportConfig();
-    int SIP_PORT = 6050;
+    int SIP_PORT = 5060;
 
-    /* Set SIP port back to default for JSON saved config */
     sipTpConfig.setPort(SIP_PORT);
-
-    // 创建一个或多个传输
     try
     {
       mEndPoint.transportCreate(pjsip_transport_type_e.PJSIP_TRANSPORT_UDP, sipTpConfig);
@@ -145,22 +130,6 @@ public class PjSipManager
       e.printStackTrace();
       return;
     }
-//    try
-//    {
-//      mEndPoint.transportCreate(pjsip_transport_type_e.PJSIP_TRANSPORT_TCP, sipTpConfig);
-//    } catch (Exception e)
-//    {
-//      e.printStackTrace();
-//    }
-//
-//    try
-//    {
-//      sipTpConfig.setPort(SIP_PORT + 1);
-//      mEndPoint.transportCreate(pjsip_transport_type_e.PJSIP_TRANSPORT_TLS, sipTpConfig);
-//    } catch (Exception e)
-//    {
-//      e.printStackTrace();
-//    }
 
     /* Start. */
     try
@@ -171,6 +140,7 @@ public class PjSipManager
       e.printStackTrace();
     }
   }
+
 
   public void handleNetworkChange()
   {
@@ -214,7 +184,6 @@ public class PjSipManager
   {
     mAccountConfig = new AccountConfig();
     mAccountConfig.getNatConfig().setIceEnabled(true);
-    // 未实现视频功能，先置位false
     mAccountConfig.getVideoConfig().setAutoTransmitOutgoing(false);// 自动向外传输视频流
     mAccountConfig.getVideoConfig().setAutoShowIncoming(false);// 自动接收并显示来的视频流
     mAccountConfig.setIdUri("sip:" + username + "@" + ip + ":" + port);
@@ -240,10 +209,9 @@ public class PjSipManager
 
   public MyCall call(String username, String ip, String port)
   {
-    MyCall call = new MyCall(mAccount, -1);
-    CallOpParam prm = new CallOpParam(true);
-//    prm.getOpt().setAudioCount(1);
-//    prm.getOpt().setVideoCount(1);
+      call = new MyCall(mAccount, -1);
+      CallOpParam prm = new CallOpParam(true);
+    prm.getOpt().setAudioCount(1);
     String uri = "sip:" + username + "@" + ip + ":" + port;
     try
     {
@@ -260,5 +228,29 @@ public class PjSipManager
   {
     mAccountConfig.delete();
     mAccount.delete();
+  }
+  public void hangup(){
+    mEndPoint.hangupAllCalls();
+  }
+  public void hold()
+  {
+      try {
+        call.setHold(new CallOpParam(true));
+      } catch (Exception e) {
+          return;
+      }
+  }
+  public boolean reInvite(){
+    try{
+      CallOpParam param =  new CallOpParam(true);
+      CallSetting opt = param.getOpt();
+      opt.setFlag(pjsua_call_flag.PJSUA_CALL_UNHOLD);
+      opt.setAudioCount(1);
+      opt.setVideoCount(0);
+      call.reinvite(param);
+      return true;
+    }catch (Exception e){
+      return false;
+    }
   }
 }
